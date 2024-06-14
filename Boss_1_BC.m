@@ -1,47 +1,48 @@
-%%
-%--------------------------Balanced Cut------------------------------------
-close all; clear all; clc;
-specifier.matlabversion = 0; %0 if older than 2015 1 otherwise
+function Boss_1_BC(varargin) 
+    format long g;
+    p = inputParser;
+    addOptional(p, 'graph', 'G1', @ischar);
+    addOptional(p, 'seed', 0, @isnumeric);
+    % 2: RALM 3: Q_LSE 4: LSE
+    addOptional(p, 'solver', 'RALM', @ischar);
+    parse(p, varargin{:});
 
-dim_set = [50, 200, 500, 1000, 2000, 5000]; %dimension of the Adjacency Matrix
-density_set = [0.005, 0.01, 0.02, 0.04, 0.08]; %density of the Adjacency Matrix 
+    seed = p.Results.seed;
+    minbisec_data = p.Results.graph;
+    solver = p.Results.solver;
+    %--------------------------Balanced Cut------------------------------------
+    %specifier.matlabversion = 0; %0 if older than 2015 1 otherwise
 
-n_repeat = 4;   %Number of repeat on same set of data
-rank = 2;     %Graph Bisection
-seed_size = 5; %fixed seed size for BA
-prob_ER = 0.5; %probability of connecting an edge in ER graph.
+    rank = 2;     %Graph Bisection
+    rng(seed, 'twister');
 
-for repeat = 1 : n_repeat
-    
-    for dim = dim_set
+    fprintf("Solving Minimum Bisection SDP for %s\n", minbisec_data);
 
-        for density = density_set
-        
-            %_______Set up data______
-            mlink = ceil(density * dim);
-            L = powerlawgraph(seed_size, prob_ER, dim, mlink);
-            
-            %________Experiment_____
-            options.maxOuterIter = 100000000;
-            options.maxtime = 3600;
-            options.minstepsize = 1e-10;
-            
-            %Only do mini-sum-max for low dimensional data
-            if dim == dim_set(1)
-                specifier.ind = ones(5,1);
-            else
-                specifier.ind = [0, 1, 1, 1, 1];
-            end
-            
-            result = clientconstraint_oblique_balancedcut(L, rank, options, specifier);
-            result = result(:);
-            param = [dim; density; repeat];
-            outputdata = [result; param]';
-            
-            filename = sprintf('zz_BC_Dim%d.dat', dim);
-            dlmwrite(filename, outputdata, 'delimiter', ',', 'precision', 16, '-append');
-        end
-        
+    %% modify the path before running
+    data = load(['data/MinimumBisection/', minbisec_data, '.mat']);
+    A = data.A;
+    n = size(A, 1);
+    L = spdiags(A*ones(n,1),0,n,n) - A;
+
+    %________Experiment_____
+    options.maxOuterIter = 100000000;
+    options.maxtime = 3600;
+    options.minstepsize = 1e-10;
+
+
+    solver_str = convertCharsToStrings(solver);
+    if solver_str == "RALM"
+        specifier = 2;
+    elseif solver_str == "Q_LQH"
+        specifier = 3;
+    else % "Q_LSE"
+        specifier = 4;
     end
-    
+    result = clientconstraint_oblique_balancedcut(L, rank, options, specifier);
+    disp(result);
+    if ~exist(['output/MinimumBisection/', minbisec_data, '/', solver],'dir') 
+        mkdir(['output/MinimumBisection/', minbisec_data, '/', solver]); 
+    end
+    save(['output/MinimumBisection/', minbisec_data,...
+         '/', solver, '/', solver, '-seed-', num2str(seed), '.mat'],'result','-v7.3');
 end
